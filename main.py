@@ -8,6 +8,9 @@ def main():
     access_token = env.str('STRAPI_ACCESS_TOKEN')
     headers = {'Authorization': f'Bearer {access_token}'}
     r = requests.get('http://localhost:1337/api/products', headers=headers)
+    products = r.json()
+
+
     print(r.json())
 
 if __name__ == '__main__':
