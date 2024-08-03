@@ -74,7 +74,7 @@ def get_database_connection():
     if _database is None:
         database_password = os.getenv("DATABASE_PASSWORD")
         database_host = os.getenv("DATABASE_HOST")
-        database_port = os.getenv("DATABASE_PORT")
+        database_port = int(os.getenv("DATABASE_PORT"))
         _database = redis.Redis(host=database_host, port=database_port, password=database_password)
     return _database
 
@@ -101,17 +101,18 @@ def get_product_details(access_token, product_id):
 
     product_details = r.json()['data']['attributes']
 
-    text = f'''{product_details["name"]} ({product_details["price"]} руб. за кг)\n\n
-    {product_details["description"]}
-    '''
-    print(text)
+    text = f"""
+    {product_details['name']} ({product_details['price']} руб. за кг)\n\n
+    {product_details['description']}
+    """
     return text
 
 
-if __name__ == '__main__':
+def main():
     env = Env()
     env.read_env()
     strapi_access_token = env.str('STRAPI_ACCESS_TOKEN')
+    strapi_url = env.str('STRAPI_URL')
 
     tg_bot_token = os.getenv("TG_BOT_TOKEN")
     updater = Updater(tg_bot_token)
@@ -126,3 +127,7 @@ if __name__ == '__main__':
 
     updater.start_polling()
     updater.idle()
+
+
+if __name__ == '__main__':
+    main()
