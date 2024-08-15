@@ -11,7 +11,5 @@ def main():
     products = r.json()
 
 
-    print(r.json())
-
 if __name__ == '__main__':
     main()
