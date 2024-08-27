@@ -14,16 +14,16 @@ def get_products(strapi_url, strapi_token):
     return response.json()
 
 
-def add_product(cart_id, product_id, amount, strapi_url, strapi_token):
+def add_product_to_cart(cart_id, product_id, weight, strapi_url, strapi_token):
     payload = {
         'data': {
             'cart': cart_id,
             'product': product_id,
-            'amount': amount,
+            'weight': weight
         }
     }
     response = requests.post(
-        f'{strapi_url}/api/product-in-carts',
+        f'{strapi_url}/api/cart-products',
         headers={
             'Authorization': f'Bearer {strapi_token}'
         },
@@ -51,7 +51,7 @@ def get_cart_product(cart_id, product_id, strapi_url, strapi_token):
 def get_cart(telegram_id, strapi_url, strapi_token):
     cart_filter = {
         'filters[telegram_id][$eq]': telegram_id,
-        'populate[cartproducts][populate]': 'product',
+        'populate[cart_products][populate]': 'product',
     }
     response = requests.get(
         f'{strapi_url}/api/carts',
@@ -122,7 +122,9 @@ def get_user(cart_id, strapi_url, strapi_token):
 
 
 def save_email(user_id, email, strapi_url, strapi_token):
-    payload = {'email': email}
+    payload = {
+        'email': email
+    }
     response = requests.put(
         f'{strapi_url}/api/users/{user_id}',
         headers={

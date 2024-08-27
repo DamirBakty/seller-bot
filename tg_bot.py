@@ -1,13 +1,14 @@
 import logging
 import os
 
+from functools import partial
 import redis
 from environs import Env
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CallbackQueryHandler, CommandHandler
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, Filters
 from telegram.ext import Updater
 
-from strapi import get_products, get_product_and_picture, get_product_image, get_cart, create_cart
+from strapi import get_products, get_product_and_picture, get_product_image, get_cart, create_cart, add_product_to_cart
 
 _database = None
 
@@ -17,8 +18,69 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def get_database_connection():
+    global _database
+    if _database is None:
+        database_password = os.getenv("DATABASE_PASSWORD")
+        database_host = os.getenv("DATABASE_HOST")
+        database_port = int(os.getenv("DATABASE_PORT"))
+        _database = redis.Redis(host=database_host, port=database_port, password=database_password)
+    return _database
+
+
+def show_cart(update, context, strapi_access_token, strapi_url) -> str:
+    telegram_id = context.bot_data['user_id']
+    user_cart = get_cart(
+        telegram_id,
+        strapi_token=strapi_access_token,
+        strapi_url=strapi_url
+    )
+    print(user_cart)
+    user_cart_data = user_cart['data'][0]
+    context.bot_data['cart_id'] = user_cart_data['id']
+    print(user_cart_data['attributes'])
+    cart_products = user_cart_data['attributes']['cartproducts']['data']
+    total = 0
+    cart_text = ''
+    inline_keyboard = [
+        [InlineKeyboardButton('Оплатить', callback_data='pay')],
+        [InlineKeyboardButton('В меню', callback_data='back_to_menu')],
+    ]
+    for cart_product in cart_products:
+        product_data = cart_product['attributes']['product']['data']
+        product_id = product_data['id']
+        product_title = product_data['attributes']['title']
+        product_description = product_data['attributes']['description']
+        product_price = product_data['attributes']['price']
+        product_weight = cart_product['attributes']['weight']
+        product_total = product_price * product_weight
+        total += product_total
+        cart_text += (
+            f'{product_title}\n'
+            f'{product_description}\n'
+            f'{product_price:.2f}рублей за кг\n'
+            f'{product_weight}кг в корзине за {product_total:.2f}рублей\n\n'
+        )
+        inline_keyboard.append(
+            [InlineKeyboardButton(
+                f'Убрать {product_title}', callback_data=product_id,
+            )]
+        )
+    cart_text += f'Сумма: {total:.2f}рублей'
+    context.bot.send_message(
+        context.bot_data['telegram_id'],
+        cart_text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard),
+    )
+    return 'HANDLE_CART'
+
+
 def start(update, context, strapi_access_token, strapi_url):
-    context.bot_data['user_id'] = update.message.from_user.id
+    update.message.reply_text(
+        text='Привет!',
+        reply_markup=ReplyKeyboardMarkup([[KeyboardButton('Моя корзина')]]),
+    )
+    context.bot_data['user_id'] = str(update.message.from_user.id)
     return get_menu(update, context, strapi_access_token, strapi_url)
 
 
@@ -43,7 +105,6 @@ def handle_menu(update, context, strapi_access_token, strapi_url):
     product_details = get_product_details(strapi_access_token, product_id, strapi_url)
     product_text = product_details['text']
     product_image = product_details['image']
-
     reply_markup = InlineKeyboardMarkup([
         [InlineKeyboardButton(
             'Добавить в корзину',
@@ -53,6 +114,7 @@ def handle_menu(update, context, strapi_access_token, strapi_url):
             'Назад',
             callback_data='back_to_menu'
         )],
+
     ])
 
     context.bot.send_photo(
@@ -68,19 +130,50 @@ def handle_menu(update, context, strapi_access_token, strapi_url):
 
 
 def get_or_create_cart(update, context, strapi_access_token, strapi_url):
-    product_id = context.bot_data['product_id']
     user_id = context.bot_data['user_id']
     cart = get_cart(user_id, strapi_url, strapi_access_token)
 
-    if not cart:
+    if not cart.get('data'):
         create_cart(user_id, strapi_url, strapi_access_token)
         cart = get_cart(user_id, strapi_url, strapi_access_token)
     cart_id = cart['data'][0]['id']
+
+    return cart_id
 
 
 def handle_description(update, context, strapi_access_token, strapi_url):
     if update.callback_query.data == 'back_to_menu':
         return get_menu(update, context, strapi_access_token, strapi_url)
+    if update.callback_query.data == 'add_to_cart':
+        cart_id = get_or_create_cart(update, context, strapi_access_token, strapi_url)
+        context.bot_data['cart_id'] = cart_id
+        user_id = context.bot_data['user_id']
+
+        context.bot.send_message(
+            user_id,
+            'Сколько килограмм вам?'
+        )
+        return 'HANDLE_WEIGHT'
+
+
+def handle_weight(update, context, strapi_access_token, strapi_url):
+    weight = is_float(update.message)
+    if not weight:
+        update.message.reply_text("Пожалуйста, введите количество в килограммах.")
+        return 'HANDLE_WEIGHT'
+    cart_id = context.bot_data['cart_id']
+    product_id = context.bot_data['product_id']
+    add_product_to_cart(
+        cart_id=cart_id,
+        product_id=product_id,
+        weight=weight,
+        strapi_url=strapi_url,
+        strapi_token=strapi_access_token
+
+    )
+    update.message.reply_text("Продукт был успешно добавлен в вашу корзину")
+
+    return 'START'
 
 
 def handle_users_reply(update, context):
@@ -103,7 +196,8 @@ def handle_users_reply(update, context):
     states_functions = {
         'START': start,
         'HANDLE_MENU': handle_menu,
-        'HANDLE_DESCRIPTION': handle_description
+        'HANDLE_DESCRIPTION': handle_description,
+        'HANDLE_WEIGHT': handle_weight
     }
     state_handler = states_functions[user_state]
     try:
@@ -111,16 +205,6 @@ def handle_users_reply(update, context):
         db.set(chat_id, next_state)
     except Exception as err:
         logger.exception(err)
-
-
-def get_database_connection():
-    global _database
-    if _database is None:
-        database_password = os.getenv("DATABASE_PASSWORD")
-        database_host = os.getenv("DATABASE_HOST")
-        database_port = int(os.getenv("DATABASE_PORT"))
-        _database = redis.Redis(host=database_host, port=database_port, password=database_password)
-    return _database
 
 
 def get_products_keyboard(strapi_token, strapi_url):
@@ -150,6 +234,14 @@ def get_product_details(strapi_token, product_id, strapi_url):
     }
 
 
+def is_float(message):
+    try:
+        weight = float(message.text)
+        return weight
+    except ValueError:
+        return False
+
+
 def main():
     env = Env()
     env.read_env()
@@ -162,12 +254,21 @@ def main():
     dispatcher.bot_data['strapi_access_token'] = strapi_access_token
     dispatcher.bot_data['strapi_url'] = strapi_url
 
-    # dispatcher.add_handler(
-    #     MessageHandler(Filters.regex(r'Моя корзина'), show_cart),
-    # )
+    dispatcher.add_handler(
+        MessageHandler(
+            Filters.regex(r'Моя корзина'),
+            partial(
+                show_cart,
+                strapi_access_token=strapi_access_token,
+                strapi_url=strapi_url
+            ),
+        ),
+    )
     dispatcher.add_handler(CallbackQueryHandler(handle_users_reply))
 
     dispatcher.add_handler(CommandHandler('start', handle_users_reply))
+
+    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_users_reply))
 
     updater.start_polling()
     updater.idle()
