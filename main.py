@@ -9,6 +9,7 @@ def main():
     headers = {'Authorization': f'Bearer {access_token}'}
     r = requests.get('http://localhost:1337/api/products', headers=headers)
     products = r.json()
+    print(products)
 
 
 if __name__ == '__main__':

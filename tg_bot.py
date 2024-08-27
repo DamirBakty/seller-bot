@@ -35,11 +35,9 @@ def show_cart(update, context, strapi_access_token, strapi_url) -> str:
         strapi_token=strapi_access_token,
         strapi_url=strapi_url
     )
-    print(user_cart)
     user_cart_data = user_cart['data'][0]
     context.bot_data['cart_id'] = user_cart_data['id']
-    print(user_cart_data['attributes'])
-    cart_products = user_cart_data['attributes']['cartproducts']['data']
+    cart_products = user_cart_data['attributes']['cart_products']['data']
     total = 0
     cart_text = ''
     inline_keyboard = [
@@ -49,26 +47,26 @@ def show_cart(update, context, strapi_access_token, strapi_url) -> str:
     for cart_product in cart_products:
         product_data = cart_product['attributes']['product']['data']
         product_id = product_data['id']
-        product_title = product_data['attributes']['title']
+        product_name = product_data['attributes']['name']
         product_description = product_data['attributes']['description']
         product_price = product_data['attributes']['price']
         product_weight = cart_product['attributes']['weight']
         product_total = product_price * product_weight
         total += product_total
         cart_text += (
-            f'{product_title}\n'
+            f'{product_name}\n'
             f'{product_description}\n'
             f'{product_price:.2f}рублей за кг\n'
             f'{product_weight}кг в корзине за {product_total:.2f}рублей\n\n'
         )
         inline_keyboard.append(
             [InlineKeyboardButton(
-                f'Убрать {product_title}', callback_data=product_id,
+                f'Убрать {product_name}', callback_data=product_id,
             )]
         )
     cart_text += f'Сумма: {total:.2f}рублей'
     context.bot.send_message(
-        context.bot_data['telegram_id'],
+        context.bot_data['user_id'],
         cart_text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard),
     )
@@ -90,7 +88,7 @@ def get_menu(update, context, strapi_access_token, strapi_url):
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.bot.send_message(
         user_id,
-        'Please choose:',
+        'Пожалуйста выберите:',
         reply_markup=reply_markup,
     )
     return 'HANDLE_MENU'

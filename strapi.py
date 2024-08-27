@@ -33,7 +33,7 @@ def add_product_to_cart(cart_id, product_id, weight, strapi_url, strapi_token):
 
 
 def get_cart_product(cart_id, product_id, strapi_url, strapi_token):
-    cart_product_filter = {
+    params = {
         'filters[cart][$eq]': cart_id,
         'filters[product][$eq]': product_id,
     }
@@ -42,14 +42,14 @@ def get_cart_product(cart_id, product_id, strapi_url, strapi_token):
         headers={
             'Authorization': f'Bearer {strapi_token}'
         },
-        params=cart_product_filter,
+        params=params,
     )
     response.raise_for_status()
     return response.json()
 
 
 def get_cart(telegram_id, strapi_url, strapi_token):
-    cart_filter = {
+    params = {
         'filters[telegram_id][$eq]': telegram_id,
         'populate[cart_products][populate]': 'product',
     }
@@ -58,7 +58,7 @@ def get_cart(telegram_id, strapi_url, strapi_token):
         headers={
             'Authorization': f'Bearer {strapi_token}'
         },
-        params=cart_filter
+        params=params
     )
     response.raise_for_status()
     return response.json()
@@ -109,13 +109,13 @@ def get_product_and_picture(product_id, strapi_url, strapi_token):
 
 
 def get_user(cart_id, strapi_url, strapi_token):
-    user_filter = {'filters[cart][$eq]': cart_id}
+    params = {'filters[cart][$eq]': cart_id}
     response = requests.get(
         f'{strapi_url}/api/users',
         headers={
             'Authorization': f'Bearer {strapi_token}'
         },
-        params=user_filter,
+        params=params,
     )
     response.raise_for_status()
     return response.json()
