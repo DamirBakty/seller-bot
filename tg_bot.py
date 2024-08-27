@@ -8,7 +8,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMa
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, Filters
 from telegram.ext import Updater
 
-from strapi import get_products, get_product_and_picture, get_product_image, get_cart, create_cart, add_product_to_cart
+from strapi import get_products, get_product_and_picture, get_product_image, get_cart, create_cart, add_product_to_cart, \
+    delete_cart_product
 
 _database = None
 
@@ -28,7 +29,7 @@ def get_database_connection():
     return _database
 
 
-def show_cart(update, context, strapi_access_token, strapi_url) -> str:
+def show_cart(update, context, strapi_access_token, strapi_url):
     telegram_id = context.bot_data['user_id']
     user_cart = get_cart(
         telegram_id,
@@ -45,8 +46,8 @@ def show_cart(update, context, strapi_access_token, strapi_url) -> str:
         [InlineKeyboardButton('В меню', callback_data='back_to_menu')],
     ]
     for cart_product in cart_products:
+        cart_product_id = cart_product['id']
         product_data = cart_product['attributes']['product']['data']
-        product_id = product_data['id']
         product_name = product_data['attributes']['name']
         product_description = product_data['attributes']['description']
         product_price = product_data['attributes']['price']
@@ -56,15 +57,15 @@ def show_cart(update, context, strapi_access_token, strapi_url) -> str:
         cart_text += (
             f'{product_name}\n'
             f'{product_description}\n'
-            f'{product_price:.2f}рублей за кг\n'
-            f'{product_weight}кг в корзине за {product_total:.2f}рублей\n\n'
+            f'{product_price:.2f} рублей за кг\n'
+            f'{product_weight}кг в корзине за {product_total:.2f} рублей\n\n'
         )
         inline_keyboard.append(
             [InlineKeyboardButton(
-                f'Убрать {product_name}', callback_data=product_id,
+                f'Убрать {product_name} за {product_total:.2f} рублей', callback_data=f'delete_{cart_product_id}'
             )]
         )
-    cart_text += f'Сумма: {total:.2f}рублей'
+    cart_text += f'Сумма: {total:.2f} рублей'
     context.bot.send_message(
         context.bot_data['user_id'],
         cart_text,
@@ -98,6 +99,7 @@ def handle_menu(update, context, strapi_access_token, strapi_url):
     query = update.callback_query
 
     product_id = query.data
+
     context.bot_data['product_id'] = product_id
 
     product_details = get_product_details(strapi_access_token, product_id, strapi_url)
@@ -111,8 +113,7 @@ def handle_menu(update, context, strapi_access_token, strapi_url):
         [InlineKeyboardButton(
             'Назад',
             callback_data='back_to_menu'
-        )],
-
+        )]
     ])
 
     context.bot.send_photo(
@@ -139,10 +140,22 @@ def get_or_create_cart(update, context, strapi_access_token, strapi_url):
     return cart_id
 
 
+def handle_cart(update, context, strapi_access_token, strapi_url):
+    query_data = update.callback_query.data
+    if query_data.split('_')[0] == 'delete':
+        cart_product_id = query_data.split('_')[1]
+        delete_cart_product(cart_product_id, strapi_url, strapi_access_token)
+
+        show_cart(update, context, strapi_access_token, strapi_url)
+        update.callback_query.delete_message()
+    return 'HANDLE_CART'
+
+
 def handle_description(update, context, strapi_access_token, strapi_url):
-    if update.callback_query.data == 'back_to_menu':
+    query_data = update.callback_query.data
+    if query_data == 'back_to_menu':
         return get_menu(update, context, strapi_access_token, strapi_url)
-    if update.callback_query.data == 'add_to_cart':
+    elif query_data == 'add_to_cart':
         cart_id = get_or_create_cart(update, context, strapi_access_token, strapi_url)
         context.bot_data['cart_id'] = cart_id
         user_id = context.bot_data['user_id']
@@ -176,6 +189,9 @@ def handle_weight(update, context, strapi_access_token, strapi_url):
 
 def handle_users_reply(update, context):
     db = get_database_connection()
+    strapi_access_token = context.bot_data.get('strapi_access_token')
+    strapi_url = context.bot_data.get('strapi_url')
+
     if update.message:
         user_reply = update.message.text
         chat_id = update.message.chat_id
@@ -186,16 +202,19 @@ def handle_users_reply(update, context):
         return
     if user_reply == '/start':
         user_state = 'START'
+    elif user_reply == 'Моя корзина':
+        next_state = show_cart(update, context, strapi_access_token, strapi_url)
+        db.set(chat_id, next_state)
+        return
     else:
         user_state = db.get(chat_id).decode('utf-8')
-    strapi_access_token = context.bot_data.get('strapi_access_token')
-    strapi_url = context.bot_data.get('strapi_url')
 
     states_functions = {
         'START': start,
         'HANDLE_MENU': handle_menu,
         'HANDLE_DESCRIPTION': handle_description,
-        'HANDLE_WEIGHT': handle_weight
+        'HANDLE_WEIGHT': handle_weight,
+        'HANDLE_CART': handle_cart
     }
     state_handler = states_functions[user_state]
     try:
@@ -252,16 +271,6 @@ def main():
     dispatcher.bot_data['strapi_access_token'] = strapi_access_token
     dispatcher.bot_data['strapi_url'] = strapi_url
 
-    dispatcher.add_handler(
-        MessageHandler(
-            Filters.regex(r'Моя корзина'),
-            partial(
-                show_cart,
-                strapi_access_token=strapi_access_token,
-                strapi_url=strapi_url
-            ),
-        ),
-    )
     dispatcher.add_handler(CallbackQueryHandler(handle_users_reply))
 
     dispatcher.add_handler(CommandHandler('start', handle_users_reply))

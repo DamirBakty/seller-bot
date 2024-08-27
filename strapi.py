@@ -83,7 +83,7 @@ def create_cart(telegram_id, strapi_url, strapi_token):
 
 def delete_cart_product(product_id, strapi_url, strapi_token):
     response = requests.delete(
-        f'{strapi_url}/api/product-in-carts/{product_id}',
+        f'{strapi_url}/api/cart-products/{product_id}',
         headers={
             'Authorization': f'Bearer {strapi_token}'
         }
