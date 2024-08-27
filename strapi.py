@@ -109,7 +109,9 @@ def get_product_and_picture(product_id, strapi_url, strapi_token):
 
 
 def get_user(cart_id, strapi_url, strapi_token):
-    params = {'filters[cart][$eq]': cart_id}
+    params = {
+        'filters[cart][$eq]': cart_id
+    }
     response = requests.get(
         f'{strapi_url}/api/users',
         headers={

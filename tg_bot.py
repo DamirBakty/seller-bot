@@ -1,7 +1,6 @@
 import logging
 import os
 
-from functools import partial
 import redis
 from environs import Env
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
@@ -9,7 +8,7 @@ from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, F
 from telegram.ext import Updater
 
 from strapi import get_products, get_product_and_picture, get_product_image, get_cart, create_cart, add_product_to_cart, \
-    delete_cart_product
+    delete_cart_product, get_user, save_email
 
 _database = None
 
@@ -83,6 +82,20 @@ def start(update, context, strapi_access_token, strapi_url):
     return get_menu(update, context, strapi_access_token, strapi_url)
 
 
+def get_user_contacts(update, context, strapi_access_token, strapi_url):
+    cart_id = context.bot_data['cart_id']
+    user = get_user(cart_id, strapi_url, strapi_access_token)
+
+    user_id = user[0]['id']
+    email = update.message.text
+    try:
+        save_email(user_id, email, strapi_url, strapi_access_token)
+    except:
+        update.message.reply_text('Неверная почта')
+        return 'WAITING_EMAIL'
+    return 'START'
+
+
 def get_menu(update, context, strapi_access_token, strapi_url):
     keyboard = get_products_keyboard(strapi_access_token, strapi_url)
     user_id = context.bot_data['user_id']
@@ -148,7 +161,7 @@ def handle_cart(update, context, strapi_access_token, strapi_url):
 
         show_cart(update, context, strapi_access_token, strapi_url)
         update.callback_query.delete_message()
-    return 'HANDLE_CART'
+    return 'HANDLE_DESCRIPTION'
 
 
 def handle_description(update, context, strapi_access_token, strapi_url):
@@ -165,6 +178,12 @@ def handle_description(update, context, strapi_access_token, strapi_url):
             'Сколько килограмм вам?'
         )
         return 'HANDLE_WEIGHT'
+    elif query_data == 'pay':
+        context.bot.send_message(
+            update.callback_query.from_user.id,
+            'Введите email',
+        )
+        return 'WAITING_EMAIL'
 
 
 def handle_weight(update, context, strapi_access_token, strapi_url):
@@ -214,7 +233,8 @@ def handle_users_reply(update, context):
         'HANDLE_MENU': handle_menu,
         'HANDLE_DESCRIPTION': handle_description,
         'HANDLE_WEIGHT': handle_weight,
-        'HANDLE_CART': handle_cart
+        'HANDLE_CART': handle_cart,
+        'WAITING_EMAIL': get_user_contacts,
     }
     state_handler = states_functions[user_state]
     try:
