@@ -7,6 +7,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMa
 from telegram.ext import CallbackQueryHandler, CommandHandler, MessageHandler, Filters
 from telegram.ext import Updater
 
+from custom_validators import is_float
 from strapi import get_products, get_product_and_picture, get_product_image, get_cart, create_cart, add_product_to_cart, \
     delete_cart_product, get_user, save_email
 
@@ -53,12 +54,13 @@ def show_cart(update, context, strapi_access_token, strapi_url):
         product_weight = cart_product['attributes']['weight']
         product_total = product_price * product_weight
         total += product_total
-        cart_text += (
-            f'{product_name}\n'
-            f'{product_description}\n'
-            f'{product_price:.2f} рублей за кг\n'
-            f'{product_weight}кг в корзине за {product_total:.2f} рублей\n\n'
-        )
+        cart_text += f"""
+        {product_name}
+        {product_description}
+        {product_price:.2f} рублей за кг
+        {product_weight}кг в корзине за {product_total:.2f} рублей
+
+        """
         inline_keyboard.append(
             [InlineKeyboardButton(
                 f'Убрать {product_name} за {product_total:.2f} рублей', callback_data=f'delete_{cart_product_id}'
@@ -187,10 +189,13 @@ def handle_description(update, context, strapi_access_token, strapi_url):
 
 
 def handle_weight(update, context, strapi_access_token, strapi_url):
-    weight = is_float(update.message)
-    if not weight:
+    is_weight = is_float(update.message)
+
+    if not is_weight:
         update.message.reply_text("Пожалуйста, введите количество в килограммах.")
         return 'HANDLE_WEIGHT'
+
+    weight = float(update.message.text)
     cart_id = context.bot_data['cart_id']
     product_id = context.bot_data['product_id']
     add_product_to_cart(
@@ -269,14 +274,6 @@ def get_product_details(strapi_token, product_id, strapi_url):
         'text': product_text,
         'image': product_image
     }
-
-
-def is_float(message):
-    try:
-        weight = float(message.text)
-        return weight
-    except ValueError:
-        return False
 
 
 def main():
