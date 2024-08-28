@@ -1,5 +1,6 @@
 import logging
 import os
+from textwrap import dedent
 
 import redis
 from environs import Env
@@ -67,6 +68,7 @@ def show_cart(update, context, strapi_access_token, strapi_url):
             )]
         )
     cart_text += f'Сумма: {total:.2f} рублей'
+    cart_text = dedent(cart_text)
     context.bot.send_message(
         context.bot_data['user_id'],
         cart_text,
