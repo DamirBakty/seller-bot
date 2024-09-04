@@ -13,15 +13,6 @@
 $ pip install -r requirements.txt
 ```
 
-* Установите [Node](https://nodejs.org)
-* Создайте проект strapi по [инструкции](https://docs.strapi.io/user-docs/intro)
-
-```bash
-npx create-strapi-app my-project --quickstart
-```
-
-* Создайте сущности `cart`, `cart_product`, `product` и установите связи между ними
-
 ## Установка Redis
 
 [Установите и запустите Redis](https://redis.io/docs/latest/operate/oss_and_stack/install/install-redis/), если этого
